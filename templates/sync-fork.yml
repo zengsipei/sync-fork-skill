@@ -1,0 +1,92 @@
+name: Sync fork with upstream
+
+# Keeps this fork's default branch in lockstep with the upstream
+# (parent) repository on a recurring schedule by calling GitHub's
+# merge-upstream API — the same operation as clicking "Sync fork"
+# on the web UI. Conflicts cause the workflow to fail visibly so
+# you can investigate.
+
+on:
+  schedule:
+    # Default: every 6 hours at minute 17. Minute 17 deliberately
+    # avoids the on-the-hour cron stampede on GitHub's shared
+    # runners (everyone defaults to `0 */6 * * *`, which queues your
+    # job behind thousands of others). Adjust the */N as needed.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+# Don't let two sync runs race each other. cancel-in-progress is
+# false because a half-finished merge is worse than waiting.
+concurrency:
+  group: sync-fork
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync default branch from upstream
+        env:
+          # Token selection with graceful degradation:
+          #
+          #   1. SYNC_FORK_TOKEN — a PAT (classic with `repo` +
+          #      `workflow`, or fine-grained with Contents:write +
+          #      Workflows:write) or GitHub App token. Required
+          #      when upstream commits touch .github/workflows/**.
+          #
+          #   2. GITHUB_TOKEN (fallback) — the default Actions
+          #      token. Works for upstreams that never modify
+          #      workflow files. When upstream eventually changes
+          #      a workflow, this run will fail with:
+          #        "Upstream commits contain workflow changes,
+          #         which require the `workflow` scope or
+          #         permission to merge."
+          #      Provision SYNC_FORK_TOKEN at that point to fix —
+          #      no edit to this file is needed; the expression
+          #      below picks up the new secret on the next run.
+          #
+          # GitHub Actions expressions: `secrets.X || secrets.Y`
+          # returns the first non-empty value, so undefined
+          # SYNC_FORK_TOKEN cleanly falls through to GITHUB_TOKEN.
+          GH_TOKEN: ${{ secrets.SYNC_FORK_TOKEN || secrets.GITHUB_TOKEN }}
+          HAS_SYNC_TOKEN: ${{ secrets.SYNC_FORK_TOKEN != '' }}
+          REPO: ${{ github.repository }}
+          # Branch to sync. Override here if the fork tracks a
+          # different default (e.g. master, develop).
+          BRANCH: main
+        run: |
+          set -euo pipefail
+
+          if [ "$HAS_SYNC_TOKEN" = "true" ]; then
+            echo "Token: SYNC_FORK_TOKEN (custom PAT/App with workflow scope)"
+          else
+            echo "Token: default GITHUB_TOKEN (no workflow scope)"
+            echo "::notice::Using default GITHUB_TOKEN. If upstream commits touch .github/workflows/**, this run will fail. Set the SYNC_FORK_TOKEN secret to a PAT with workflow scope to enable workflow-aware syncs."
+          fi
+
+          # Resolve the upstream parent through the GitHub API. If
+          # this repo isn't a fork there is nothing to sync — fail loud.
+          UPSTREAM=$(gh api "repos/$REPO" --jq '.parent.full_name // empty')
+          if [ -z "$UPSTREAM" ]; then
+            echo "::error::$REPO is not a fork — nothing to sync."
+            exit 1
+          fi
+          echo "Upstream detected: $UPSTREAM"
+          echo "Syncing $REPO:$BRANCH from $UPSTREAM..."
+
+          # gh repo sync wraps POST /repos/{owner}/{repo}/merge-upstream.
+          # Behaviour:
+          #   * fast-forward → branch advanced, exit 0
+          #   * none         → already up to date, exit 0
+          #   * conflict     → exit non-zero so this workflow fails and
+          #                    you get an email / red x to investigate.
+          if ! gh repo sync "$REPO" --branch "$BRANCH"; then
+            rc=$?
+            if [ "$HAS_SYNC_TOKEN" != "true" ]; then
+              echo "::warning::Sync failed. If the error above mentions 'workflow scope', provision SYNC_FORK_TOKEN (PAT with workflow scope) and re-run. The fallback expression in this workflow will pick it up automatically — no file edit needed."
+            fi
+            exit "$rc"
+          fi
