@@ -164,9 +164,7 @@ If it fails, the most likely causes (in order):
 3. Settings → Actions → General → Workflow permissions is "Read-only" → toggle to "Read and write"
 4. Branch protection rule blocks direct push → either grant a bypass or refactor to PR-based sync (separate skill)
 
-## Substrate / write-surface gotchas
-
-- **Myco substrates** (repos with `_canon.yaml` at the root): the `system.write_surface.allowed` list typically doesn't include `.github/**` by default. Before writing the workflow, check `_canon.yaml`. If `.github/**` is missing, add it to the `allowed` list — otherwise Myco's R6 write-surface guard rejects the file. After editing canon, run `myco_immune` to confirm no drift.
+## Gotchas
 
 - **`.gitignore`-shadowed `.github/`**: rare but real — some org templates ignore the whole `.github/` dir. `git status` after `git add` should show the workflow file as new; if it doesn't, check `.gitignore`.
 
@@ -200,5 +198,5 @@ Tell the user concisely:
    - "PAT provisioned via Option 1 / 2 — workflow-scope merges enabled"
    - "No PAT — running on GITHUB_TOKEN. Will auto-upgrade when you set SYNC_FORK_TOKEN later (no file edit needed). Upstream's `.github/workflows/` is currently {empty/non-empty}."
 4. Manual test: `https://github.com/<owner>/<repo>/actions/workflows/sync-fork.yml` (or the result of Step D if you already triggered it)
-5. If you modified `_canon.yaml` or `.gitignore`, mention it.
+5. If you modified `.gitignore`, mention it.
 6. If the user hasn't pushed yet, prompt them: workflows only register once they reach the default branch on origin.
