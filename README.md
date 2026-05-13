@@ -47,6 +47,14 @@ Then in any fork repo, ask Claude Code: "set up auto sync from upstream every 4 
 └── README.md                 # This file
 ```
 
+## Prerequisites
+
+- [GitHub CLI (`gh`)](https://cli.github.com/) — installed and authenticated (`gh auth login`)
+- `gh` token needs `repo` scope; if upstream has workflows, also `workflow` scope:
+  ```bash
+  gh auth refresh -s workflow,repo
+  ```
+
 ## Manual usage (without Claude Code)
 
 Copy `templates/sync-fork.yml` to `.github/workflows/sync-fork.yml` in your fork. Edit the `BRANCH` env var if your default branch isn't `main`. Commit + push. Done.
@@ -54,7 +62,7 @@ Copy `templates/sync-fork.yml` to `.github/workflows/sync-fork.yml` in your fork
 If your upstream ever modifies `.github/workflows/**`, add a `SYNC_FORK_TOKEN` repo secret with a PAT carrying `workflow` scope:
 
 ```bash
-gh auth refresh -s workflow,repo
+# Skip gh auth refresh if you've already granted workflow scope
 gh secret set SYNC_FORK_TOKEN -R <owner>/<repo> --body "$(gh auth token)"
 ```
 
