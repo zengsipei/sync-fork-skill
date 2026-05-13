@@ -85,16 +85,20 @@ Skip this step if pre-flight #4 reported no `.github/workflows/` in upstream —
 **Option 1 (recommended, ~10s)** — reuse the user's gh CLI OAuth token:
 
 ```bash
-# Refresh the CLI token to include workflow scope. Pops a browser
-# tab once; user clicks "Authorize". Idempotent if already granted.
-gh auth refresh -s workflow,repo
+# Check if the current gh token already has workflow + repo scopes.
+# gh auth status prints granted scopes; if both are present, skip refresh.
+if ! gh auth status 2>&1 | grep -q "workflow"; then
+  # Pops a browser tab once; user clicks "Authorize".
+  gh auth refresh -s workflow,repo
+fi
 
-# Store the resulting token as the repo secret. gh auth token
-# returns the OAuth token of the active gh CLI session.
+# Store the resulting token as the repo secret.
 gh secret set SYNC_FORK_TOKEN \
   -R <owner>/<repo> \
   --body "$(gh auth token)"
 ```
+
+**Important**: if the user confirms they have already run `gh auth refresh -s workflow,repo` (or the scope check above passes), skip the refresh entirely — just run `gh secret set` directly. Avoid redundant browser authorization prompts.
 
 Tradeoff: the token is bound to the user's gh CLI session. If they `gh auth logout` or rotate creds, the workflow falls back to `GITHUB_TOKEN` (graceful — runs continue, just lose workflow-scope ability).
 
